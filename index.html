@@ -212,7 +212,7 @@
     }
   </style>
 </head>
-<body class="bg-slate-100 text-slate-800 antialiased h-screen flex flex-col overflow-hidden">
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen lg:h-screen flex flex-col lg:overflow-hidden">
 
   <!-- 토스트 알림창 -->
   <div id="toastNotification" class="fixed top-5 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-md text-white px-5 py-3 rounded-2xl shadow-2xl text-xs sm:text-sm font-bold border border-slate-700/80 flex items-center gap-2.5 transform -translate-y-12 opacity-0 pointer-events-none transition-all duration-300 z-50">
@@ -327,10 +327,10 @@
   </section>
 
   <!-- 메인 바디 영역: 지도 + 상세 패널 (반응형 Split-view) -->
-  <main class="flex-1 flex flex-col lg:flex-row relative overflow-hidden">
+  <main class="flex-1 flex flex-col lg:flex-row relative lg:overflow-hidden">
 
     <!-- 좌측/상단: Leaflet 인터랙티브 해도 지도 -->
-    <div class="flex-1 relative w-full h-[45vh] lg:h-full min-h-[360px] bg-slate-100 overflow-hidden">
+    <div id="mapWrapper" class="relative w-full h-[360px] sm:h-[420px] lg:h-full lg:flex-1 bg-slate-100 overflow-hidden flex-shrink-0">
       <div id="map"></div>
 
       <!-- 지도 우측 상단 플로팅 지도 레이어 전환 컨트롤러 -->
@@ -353,8 +353,22 @@
         </button>
       </div>
 
-      <!-- 지도 좌측 하단 플로팅 퀵 포트 점프 툴바 -->
-      <div class="absolute bottom-4 left-4 z-20 bg-white/95 backdrop-blur-sm border border-slate-200/80 rounded-xl p-2 shadow-lg max-w-[92vw] sm:max-w-md">
+      <!-- 모바일 전용 지도 터치 조작 토글 & 상세 정보 바로가기 버튼 바 -->
+      <div class="lg:hidden absolute top-3 left-3 z-20 flex items-center gap-2">
+        <button id="btnMobileMapLock" type="button" onclick="toggleMobileMapDrag()" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900/90 text-white text-xs font-bold shadow-lg border border-slate-700/80 backdrop-blur-sm transition active:scale-95">
+          <span id="mapLockIcon">🔒</span>
+          <span id="mapLockText">지도 조작하기</span>
+        </button>
+      </div>
+
+      <div class="lg:hidden absolute bottom-3 right-3 z-20">
+        <button type="button" onclick="scrollToDetails()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 text-white text-xs font-bold shadow-lg border border-sky-400 backdrop-blur-sm transition active:scale-95 animate-bounce">
+          <span>📋</span> <span>운항 상세 보기 ↓</span>
+        </button>
+      </div>
+
+      <!-- 지도 좌측 하단 플로팅 퀵 포트 점프 툴바 (데스크톱 및 태블릿) -->
+      <div class="absolute bottom-4 left-4 z-20 bg-white/95 backdrop-blur-sm border border-slate-200/80 rounded-xl p-2 shadow-lg max-w-[70vw] sm:max-w-md hidden sm:block">
         <div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
           <span>⚓ 주요 거점 허브 항만 바로가기</span>
           <span class="text-sky-600 font-bold">15개 항만</span>
@@ -373,21 +387,27 @@
     </div>
 
     <!-- 우측/하단: 트래킹 상세 분석 결과 & 원클릭 연동 패널 -->
-    <div id="sidePanel" class="w-full lg:w-[480px] xl:w-[520px] bg-white border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col flex-shrink-0 shadow-xl overflow-hidden z-20 max-h-[52vh] lg:max-h-full">
+    <div id="sidePanel" class="w-full lg:w-[480px] xl:w-[520px] bg-white border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col flex-shrink-0 shadow-xl z-20 min-h-0 lg:h-full lg:overflow-hidden">
 
       <!-- 패널 헤더 (현재 조회 상태 요약) -->
-      <div class="p-3.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between flex-shrink-0">
+      <div class="p-3.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between flex-shrink-0 sticky top-0 z-10 backdrop-blur-sm">
         <div class="flex items-center gap-2">
           <span id="panelStatusBadge" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-sky-100 text-sky-800 border border-sky-200">
             <span>🔍</span> <span>조회 대기</span>
           </span>
-          <span id="panelCarrierName" class="text-xs font-bold text-slate-600 truncate max-w-[200px]">조회어를 입력하세요</span>
+          <span id="panelCarrierName" class="text-xs font-bold text-slate-600 truncate max-w-[180px] sm:max-w-[200px]">조회어를 입력하세요</span>
         </div>
-        <div class="text-[11px] text-slate-400 font-mono" id="panelLastUpdated"></div>
+        <div class="flex items-center gap-2">
+          <!-- 모바일에서 상단 지도 바로가기 버튼 -->
+          <button type="button" onclick="scrollToMap()" class="lg:hidden text-[11px] font-bold text-sky-600 bg-sky-50 hover:bg-sky-100 px-2.5 py-1 rounded-lg border border-sky-200 transition flex items-center gap-1 shadow-sm">
+            <span>🗺️</span> <span>지도 보기 ↑</span>
+          </button>
+          <div class="text-[11px] text-slate-400 font-mono hidden sm:block" id="panelLastUpdated"></div>
+        </div>
       </div>
 
       <!-- 패널 스크롤 본문 -->
-      <div class="flex-1 overflow-y-auto p-4 space-y-4" id="panelContent">
+      <div class="p-4 space-y-4 lg:flex-1 lg:overflow-y-auto" id="panelContent">
 
         <!-- 초기 환영 안내 카드 -->
         <div id="welcomeCard" class="bg-gradient-to-br from-sky-50 to-indigo-50/40 rounded-2xl p-5 border border-sky-100 text-center">
@@ -575,6 +595,13 @@
           <div id="historyList" class="flex flex-wrap gap-1.5 text-xs">
             <span class="text-slate-400 text-[11px]">최근 조회 내역이 없습니다.</span>
           </div>
+        </div>
+
+        <!-- 모바일 전용: 상단 해상 지도로 바로가기 버튼 -->
+        <div class="lg:hidden pt-2 pb-2 text-center">
+          <button type="button" onclick="scrollToMap()" class="w-full py-3 bg-slate-100 hover:bg-sky-50 text-slate-700 hover:text-sky-700 font-bold text-xs rounded-xl border border-slate-200 transition flex items-center justify-center gap-1.5 shadow-sm active:scale-98">
+            <span>🗺️</span> <span>상단 해상 지도로 다시 이동 ↑</span>
+          </button>
         </div>
 
       </div>
@@ -1208,10 +1235,72 @@
         `);
       });
 
+      // 모바일 환경일 경우 스크롤 우선 모드(지도 드래그 잠금)로 초기화
+      updateMobileMapInteraction();
+
       // 리사이즈 및 레이아웃 안정화 후 맵 렌더링 갱신
       setTimeout(() => { if (map) map.invalidateSize(); }, 150);
       setTimeout(() => { if (map) map.invalidateSize(); }, 600);
-      window.addEventListener('resize', () => { if (map) map.invalidateSize(); });
+      window.addEventListener('resize', () => {
+        if (map) map.invalidateSize();
+        updateMobileMapInteraction();
+      });
+    }
+
+    // ==========================================
+    // 5-1. 모바일 터치 스크롤 & 지도 조작 제어
+    // ==========================================
+    let isMobileMapLocked = true;
+
+    function isMobileScreen() {
+      return window.innerWidth < 1024 || ('ontouchstart' in window);
+    }
+
+    function updateMobileMapInteraction() {
+      if (!map) return;
+      const btn = document.getElementById('btnMobileMapLock');
+      const icon = document.getElementById('mapLockIcon');
+      const text = document.getElementById('mapLockText');
+
+      if (isMobileScreen()) {
+        if (isMobileMapLocked) {
+          map.dragging.disable();
+          if (btn) btn.className = "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900/90 text-white text-xs font-bold shadow-lg border border-slate-700/80 backdrop-blur-sm transition active:scale-95";
+          if (icon) icon.innerText = "🔒";
+          if (text) text.innerText = "지도 조작하기";
+        } else {
+          map.dragging.enable();
+          if (btn) btn.className = "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-sky-600 text-white text-xs font-bold shadow-lg border border-sky-400 backdrop-blur-sm transition active:scale-95 animate-pulse";
+          if (icon) icon.innerText = "🔓";
+          if (text) text.innerText = "화면 스크롤 모드";
+        }
+      } else {
+        map.dragging.enable();
+      }
+    }
+
+    function toggleMobileMapDrag() {
+      isMobileMapLocked = !isMobileMapLocked;
+      updateMobileMapInteraction();
+      if (!isMobileMapLocked) {
+        showToast("지도 조작 활성화\n지도를 자유롭게 이동/확대할 수 있습니다.");
+      } else {
+        showToast("화면 스크롤 모드\n페이지를 위아래로 자유롭게 스크롤할 수 있습니다.");
+      }
+    }
+
+    function scrollToDetails() {
+      const panel = document.getElementById('sidePanel');
+      if (panel) {
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+
+    function scrollToMap() {
+      const mapWrapper = document.getElementById('mapWrapper');
+      if (mapWrapper) {
+        mapWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
 
     // 맵 레이어 스위처 (표준 지도 / 해양 해도 / 위성 관제 / 야간 모드)
@@ -1401,6 +1490,16 @@
         renderContainerTracking(q);
       } else {
         renderVesselTracking(q);
+      }
+
+      // 모바일 화면일 경우 결과 상세 패널로 자동 스크롤
+      if (window.innerWidth < 1024) {
+        setTimeout(() => {
+          const panel = document.getElementById('sidePanel');
+          if (panel) {
+            panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 150);
       }
     }
 
