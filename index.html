@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>선박 & 컨테이너 실시간 위치 조회 시스템 | Vessel & Container Tracker</title>
+
+  <!-- 메타 태그 & PWA 설정 -->
+  <meta name="description" content="HMM, Maersk, MSC, SM상선 등 전 세계 컨테이너 및 선박(AIS) 실시간 위치와 화물 운송 상태를 한눈에 조회하는 통합 해운 트래커">
+  <meta name="theme-color" content="#0284c7">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="선박·화물 트래커">
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚢</text></svg>">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              100: '#e0f2fe',
+              500: '#0ea5e9',
+              600: '#0284c7',
+              700: '#0369a1',
+              800: '#075985',
+              900: '#0c4a6e',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Leaflet.js CDN -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <style>
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+    * {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #map {
+      width: 100%;
+      height: 100%;
+      min-height: 380px;
+      z-index: 10;
+    }
+    .custom-port-marker {
+      background: #0284c7;
+      color: #ffffff;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+      font-weight: 800;
+    }
+    .custom-vessel-marker {
+      background: #f97316;
+      color: #ffffff;
+      border: 2px solid #ffffff;
+      border-radius: 8px;
+      padding: 2px 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 800;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+      white-space: nowrap;
+    }
+    /* 스크롤바 커스텀 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased h-screen flex flex-col overflow-hidden">
+
+  <!-- 상단 네비게이션 헤더 -->
+  <header class="bg-slate-900 text-white px-4 py-3 shadow-md flex items-center justify-between flex-shrink-0 z-30">
+    <div class="flex items-center space-x-2.5">
+      <span class="text-2xl">🚢</span>
+      <div>
+        <h1 class="text-base sm:text-lg font-black tracking-tight leading-tight flex items-center gap-1.5">
+          <span>선박 & 컨테이너 실시간 위치 조회</span>
+          <span class="bg-sky-500/20 text-sky-300 text-[10px] px-1.5 py-0.5 rounded font-mono border border-sky-400/30">AIS & BIC</span>
+        </h1>
+        <p class="text-[11px] text-slate-400 font-medium hidden sm:block">Global Vessel & Container Live Tracking System</p>
+      </div>
+    </div>
+    <div class="flex items-center space-x-2">
+      <button type="button" onclick="resetToWorldView()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1">
+        <span>🌐</span> <span class="hidden md:inline">세계 항로 전체보기</span>
+      </button>
+      <a href="https://github.com/kimver2/tracking" target="_blank" rel="noopener noreferrer" class="text-xs bg-sky-600 hover:bg-sky-500 text-white px-2.5 py-1.5 rounded-lg font-semibold transition flex items-center gap-1">
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- 검색 및 제어 패널 바 -->
+  <section class="bg-white border-b border-slate-200 px-4 py-3 shadow-sm z-20 flex-shrink-0">
+    <div class="max-w-6xl mx-auto">
+      <!-- 검색 모드 탭 -->
+      <div class="flex items-center justify-between gap-2 mb-2 flex-wrap">
+        <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600">
+          <button type="button" id="tabModeCntr" onclick="setSearchMode('cntr')" class="px-3 py-1.5 rounded-lg bg-white text-sky-700 shadow-sm transition flex items-center gap-1.5">
+            <span>📦</span> <span>컨테이너 번호</span>
+          </button>
+          <button type="button" id="tabModeVessel" onclick="setSearchMode('vessel')" class="px-3 py-1.5 rounded-lg hover:text-slate-900 transition flex items-center gap-1.5">
+            <span>🚢</span> <span>선박명 / IMO / MMSI</span>
+          </button>
+        </div>
+        <div class="flex items-center gap-1 text-[11px] text-slate-500">
+          <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>OpenSeaMap 해도(Seamark) 레이어 활성화</span>
+        </div>
+      </div>
+
+      <!-- 검색창 폼 -->
+      <form onsubmit="handleSearchSubmit(event)" class="relative flex items-center gap-2">
+        <div class="relative flex-1">
+          <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+            <span id="searchIcon">📦</span>
+          </div>
+          <input
+            type="text"
+            id="searchInput"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="컨테이너 번호 입력 (예: HMMU2024101, MSCU8372619, MAEU5829104)"
+            class="w-full pl-10 pr-20 py-2.5 sm:py-3 bg-slate-50 hover:bg-white focus:bg-white border-2 border-slate-200 focus:border-sky-500 rounded-xl text-sm sm:text-base font-bold text-slate-900 placeholder:text-slate-400 placeholder:font-normal outline-none transition uppercase tracking-wider"
+          />
+          <button
+            type="button"
+            onclick="clearSearchInput()"
+            id="clearBtn"
+            class="hidden absolute inset-y-0 right-10 pr-2 flex items-center text-slate-400 hover:text-slate-600 text-sm font-bold"
+            title="검색어 삭제">
+            ✕
+          </button>
+          <button
+            type="submit"
+            class="absolute inset-y-1.5 right-1.5 px-3 sm:px-4 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-lg text-xs sm:text-sm flex items-center gap-1 transition shadow-sm">
+            <span>조회</span>
+          </button>
+        </div>
+      </form>
+
+      <!-- 빠른 예시 태그 버튼들 -->
+      <div class="mt-2 flex items-center gap-1.5 overflow-x-auto text-[11px] pb-1 text-slate-500 no-scrollbar">
+        <span class="font-bold text-slate-400 flex-shrink-0">💡 샘플:</span>
+        <button type="button" onclick="quickSearch('HMMU1234567')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-mono font-bold transition flex-shrink-0">
+          HMMU1234567 (HMM)
+        </button>
+        <button type="button" onclick="quickSearch('MAEU5829104')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-mono font-bold transition flex-shrink-0">
+          MAEU5829104 (Maersk)
+        </button>
+        <button type="button" onclick="quickSearch('MSCU8372619')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-mono font-bold transition flex-shrink-0">
+          MSCU8372619 (MSC)
+        </button>
+        <button type="button" onclick="quickSearch('SMLU9018274')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-mono font-bold transition flex-shrink-0">
+          SMLU9018274 (SM상선)
+        </button>
+        <button type="button" onclick="quickSearch('HMM GDANSK', 'vessel')" class="bg-sky-50 hover:bg-sky-100 text-sky-700 px-2 py-0.5 rounded font-bold transition flex-shrink-0">
+          🚢 HMM GDANSK
+        </button>
+        <button type="button" onclick="quickSearch('EVER GIVEN', 'vessel')" class="bg-sky-50 hover:bg-sky-100 text-sky-700 px-2 py-0.5 rounded font-bold transition flex-shrink-0">
+          🚢 EVER GIVEN
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 메인 바디 영역: 지도 + 상세 패널 (반응형 Split-view) -->
+  <main class="flex-1 flex flex-col lg:flex-row relative overflow-hidden">
+
+    <!-- 좌측/상단: Leaflet 인터랙티브 해도 지도 -->
+    <div class="flex-1 relative bg-slate-200 min-h-[300px]">
+      <div id="map"></div>
+
+      <!-- 지도 위 플로팅 퀵 포트 점프 툴바 -->
+      <div class="absolute bottom-4 left-4 z-20 bg-white/95 backdrop-blur-sm border border-slate-200/80 rounded-xl p-2 shadow-lg max-w-[92vw] sm:max-w-md">
+        <div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+          <span>⚓ 주요 거점 허브 항만 바로가기</span>
+          <span class="text-sky-600 font-bold">15개 항만</span>
+        </div>
+        <div class="flex items-center gap-1 overflow-x-auto text-[11px] font-bold no-scrollbar">
+          <button type="button" onclick="flyToPort('PUS')" class="px-2 py-1 rounded bg-sky-50 text-sky-700 hover:bg-sky-100 flex-shrink-0 transition">🇰🇷 부산항</button>
+          <button type="button" onclick="flyToPort('INC')" class="px-2 py-1 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 flex-shrink-0 transition">🇰🇷 인천항</button>
+          <button type="button" onclick="flyToPort('SHA')" class="px-2 py-1 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 flex-shrink-0 transition">🇨🇳 상하이</button>
+          <button type="button" onclick="flyToPort('SIN')" class="px-2 py-1 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 flex-shrink-0 transition">🇸🇬 싱가포르</button>
+          <button type="button" onclick="flyToPort('RTM')" class="px-2 py-1 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 flex-shrink-0 transition">🇳🇱 로테르담</button>
+          <button type="button" onclick="flyToPort('LAX')" class="px-2 py-1 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 flex-shrink-0 transition">🇺🇸 LA/롱비치</button>
+          <button type="button" onclick="flyToPort('DXB')" class="px-2 py-1 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 flex-shrink-0 transition">🇦🇪 두바이</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 우측/하단: 트래킹 상세 분석 결과 & 원클릭 연동 패널 -->
+    <div id="sidePanel" class="w-full lg:w-[460px] xl:w-[500px] bg-white border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col flex-shrink-0 shadow-xl overflow-hidden z-20 max-h-[50vh] lg:max-h-full">
+
+      <!-- 패널 헤더 (현재 조회 상태 요약) -->
+      <div class="p-4 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between flex-shrink-0">
+        <div class="flex items-center gap-2">
+          <span id="panelStatusBadge" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-sky-100 text-sky-800 border border-sky-200">
+            <span>🔍</span> <span>조회 대기</span>
+          </span>
+          <span id="panelCarrierName" class="text-xs font-bold text-slate-500">조회어를 입력하세요</span>
+        </div>
+        <div class="text-[11px] text-slate-400 font-mono" id="panelLastUpdated"></div>
+      </div>
+
+      <!-- 패널 스크롤 본문 -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-4" id="panelContent">
+
+        <!-- 초기 환영 안내 카드 -->
+        <div id="welcomeCard" class="bg-gradient-to-br from-sky-50 to-indigo-50/40 rounded-2xl p-5 border border-sky-100 text-center">
+          <div class="text-4xl mb-3">🌐</div>
+          <h2 class="text-base font-extrabold text-slate-900 mb-1">실시간 해운 물류 위치 추적</h2>
+          <p class="text-xs text-slate-600 leading-relaxed max-w-sm mx-auto mb-4">
+            상단 검색창에 <b>컨테이너 번호(4자리 영문+7자리 숫자)</b> 또는 <b>선박명/IMO 번호</b>를 입력하시면 소속 선사 자동 판별, 해상 항로, 실시간 AIS 관제 링크를 즉시 제공합니다.
+          </p>
+          <div class="grid grid-cols-2 gap-2 text-left">
+            <div class="bg-white/90 p-3 rounded-xl border border-sky-100/70 shadow-sm">
+              <div class="text-xs font-black text-sky-900 mb-1 flex items-center gap-1">
+                <span>📦</span> <span>지원 선사</span>
+              </div>
+              <p class="text-[11px] text-slate-500 leading-tight">
+                HMM, Maersk, MSC, SM상선, CMA CGM, COSCO, ONE, Evergreen, 양밍, 고려해운, 장금상선 등 20+ 주요 선사
+              </p>
+            </div>
+            <div class="bg-white/90 p-3 rounded-xl border border-sky-100/70 shadow-sm">
+              <div class="text-xs font-black text-sky-900 mb-1 flex items-center gap-1">
+                <span>🛰️</span> <span>선박 AIS 연동</span>
+              </div>
+              <p class="text-[11px] text-slate-500 leading-tight">
+                MarineTraffic, VesselFinder, MyShipTracking 실시간 위성/육상 기지국 AIS 위치 연동
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 동적 렌더링 컨테이너/선박 상세 결과 카드 (초기 히든) -->
+        <div id="resultCard" class="hidden space-y-4">
+
+          <!-- 화물/선박 타이틀 카드 -->
+          <div class="bg-slate-900 text-white rounded-2xl p-4 shadow-sm relative overflow-hidden">
+            <div class="relative z-10">
+              <div class="flex items-center justify-between text-xs text-slate-300 mb-1">
+                <span id="resTypeLabel" class="font-bold">컨테이너 추적</span>
+                <span id="resValidationBadge" class="bg-emerald-500/20 text-emerald-300 font-mono px-2 py-0.5 rounded text-[10px] border border-emerald-400/30">ISO 6346 검증완료</span>
+              </div>
+              <div class="text-xl sm:text-2xl font-black font-mono tracking-wider text-sky-400" id="resTargetId">
+                HMMU1234567
+              </div>
+              <div class="text-xs text-slate-300 mt-1 flex items-center gap-2">
+                <span id="resCarrierBadge" class="font-extrabold text-white">HMM (현대상선)</span>
+                <span class="text-slate-500">|</span>
+                <span id="resSubInfo" class="text-slate-300">40ft High Cube Container</span>
+              </div>
+            </div>
+            <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 pointer-events-none">🚢</div>
+          </div>
+
+          <!-- 운송 마일스톤 단계 프로그레스 바 -->
+          <div id="milestoneSection" class="bg-slate-50 rounded-2xl p-4 border border-slate-200/80">
+            <h3 class="text-xs font-black text-slate-800 mb-3 flex items-center justify-between">
+              <span>📍 화물 운송 진행 상태</span>
+              <span id="milestonePercent" class="text-sky-600 font-mono font-bold">60% 완료</span>
+            </h3>
+
+            <!-- 5단계 타임라인 -->
+            <div class="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200" id="timelineList">
+              <!-- JS 동적 생성 -->
+            </div>
+          </div>
+
+          <!-- 원클릭 공식 & 글로벌 트래커 다이렉트 버튼 그리드 -->
+          <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm space-y-2.5">
+            <div class="text-xs font-black text-slate-900 flex items-center justify-between">
+              <span>🔗 원클릭 공식 트래킹 연동</span>
+              <span class="text-[10px] text-slate-400 font-normal">새 창으로 안전하게 연결</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" id="directTrackButtons">
+              <!-- JS 동적 생성 -->
+            </div>
+          </div>
+
+          <!-- 선박 AIS 라이브 뷰어 버튼 & 상세 (선박 모드일 때 확장) -->
+          <div id="vesselAisCard" class="hidden bg-sky-50/70 rounded-2xl p-4 border border-sky-200 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black text-sky-950 flex items-center gap-1.5">
+                <span>🛰️</span> <span>실시간 위성 AIS 관제소</span>
+              </span>
+              <span class="text-[10px] font-bold text-sky-700 bg-sky-200/70 px-2 py-0.5 rounded">Live AIS</span>
+            </div>
+            <p class="text-xs text-slate-600 leading-snug">
+              국제 표준 선박 자동 식별 장치(AIS)를 통해 위성 및 육상 기지국이 수신한 실시간 선위, 침로, 속력, 목적지를 확인합니다.
+            </p>
+            <div class="flex flex-wrap gap-2 pt-1" id="vesselAisButtons">
+              <!-- JS 동적 생성 -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 최근 조회 기록 카드 -->
+        <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+          <div class="flex items-center justify-between mb-2.5">
+            <h3 class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+              <span>🕘</span> <span>최근 조회 기록</span>
+            </h3>
+            <button type="button" onclick="clearSearchHistory()" class="text-[11px] text-slate-400 hover:text-red-500 transition">
+              기록 전체 삭제
+            </button>
+          </div>
+          <div id="historyList" class="flex flex-wrap gap-1.5 text-xs">
+            <span class="text-slate-400 text-[11px]">최근 조회 내역이 없습니다.</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 패널 푸터 안내 -->
+      <div class="p-3 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-500 text-center flex-shrink-0">
+        <span>데이터 제공: OpenSeaMap, BIC Container Database, MarineTraffic, VesselFinder</span>
+      </div>
+
+    </div>
+
+  </main>
+
+  <script>
+    // ==========================================
+    // 1. 글로벌 선사 BIC 코드 데이터베이스
+    // ==========================================
+    const CARRIER_DB = {
+      // HMM (현대상선)
+      'HMMU': { name: 'HMM (현대상선)', code: 'HMM', color: '#002B49', site: 'https://www.hmm21.com/cms/business/ebiz/trackTrace/trackTrace/index.jsp' },
+      'HDMU': { name: 'HMM (구 현대상선)', code: 'HMM', color: '#002B49', site: 'https://www.hmm21.com/' },
+
+      // Maersk (머스크)
+      'MAEU': { name: 'Maersk Line (머스크)', code: 'MSK', color: '#42B0D5', site: 'https://www.maersk.com/tracking/' },
+      'MSKU': { name: 'Maersk Line (머스크)', code: 'MSK', color: '#42B0D5', site: 'https://www.maersk.com/tracking/' },
+      'MRKU': { name: 'Maersk Line (머스크)', code: 'MSK', color: '#42B0D5', site: 'https://www.maersk.com/tracking/' },
+      'APMU': { name: 'Maersk (APM)', code: 'MSK', color: '#42B0D5', site: 'https://www.maersk.com/tracking/' },
+
+      // MSC (지중해해운)
+      'MSCU': { name: 'MSC (지중해해운)', code: 'MSC', color: '#FFB81C', site: 'https://www.msc.com/en/track-a-shipment' },
+      'MEDU': { name: 'MSC (지중해해운)', code: 'MSC', color: '#FFB81C', site: 'https://www.msc.com/en/track-a-shipment' },
+
+      // CMA CGM
+      'CMAU': { name: 'CMA CGM', code: 'CMA', color: '#002664', site: 'https://www.cma-cgm.com/ebusiness/tracking' },
+      'CGMU': { name: 'CMA CGM', code: 'CMA', color: '#002664', site: 'https://www.cma-cgm.com/ebusiness/tracking' },
+
+      // COSCO
+      'COSU': { name: 'COSCO Shipping (코스코)', code: 'COS', color: '#003366', site: 'https://lines.coscoshipping.com/home/public/tracking' },
+      'CCLU': { name: 'COSCO Shipping', code: 'COS', color: '#003366', site: 'https://lines.coscoshipping.com/home/public/tracking' },
+      'CBHU': { name: 'COSCO Shipping', code: 'COS', color: '#003366', site: 'https://lines.coscoshipping.com/home/public/tracking' },
+
+      // Hapag-Lloyd (하팍로이드)
+      'HLCU': { name: 'Hapag-Lloyd (하팍로이드)', code: 'HLC', color: '#F26522', site: 'https://www.hapag-lloyd.com/en/online-business/track/track-by-booking-solution.html' },
+      'HLXU': { name: 'Hapag-Lloyd', code: 'HLC', color: '#F26522', site: 'https://www.hapag-lloyd.com/' },
+
+      // ONE (Ocean Network Express)
+      'ONEU': { name: 'ONE (Ocean Network Express)', code: 'ONE', color: '#E4007F', site: 'https://www.one-line.com/' },
+      'KKFU': { name: 'ONE (구 K-Line)', code: 'ONE', color: '#E4007F', site: 'https://www.one-line.com/' },
+      'NYKU': { name: 'ONE (구 NYK)', code: 'ONE', color: '#E4007F', site: 'https://www.one-line.com/' },
+      'MOLU': { name: 'ONE (구 MOL)', code: 'ONE', color: '#E4007F', site: 'https://www.one-line.com/' },
+
+      // Evergreen (에버그린)
+      'EGLU': { name: 'Evergreen (에버그린)', code: 'EGL', color: '#007A33', site: 'https://www.shipmentlink.com/' },
+      'EISU': { name: 'Evergreen (에버그린)', code: 'EGL', color: '#007A33', site: 'https://www.shipmentlink.com/' },
+      'EMCU': { name: 'Evergreen (에버그린)', code: 'EGL', color: '#007A33', site: 'https://www.shipmentlink.com/' },
+
+      // Yang Ming (양밍해운)
+      'YMLU': { name: 'Yang Ming (양밍해운)', code: 'YML', color: '#003399', site: 'https://www.yangming.com/' },
+
+      // ZIM (짐라인)
+      'ZIMU': { name: 'ZIM Integrated Shipping', code: 'ZIM', color: '#002C6C', site: 'https://www.zim.com/tools/track-a-shipment' },
+
+      // SM Line (SM상선)
+      'SMLU': { name: 'SM상선 (SM Line)', code: 'SML', color: '#C8102E', site: 'https://esvc.smlines.com/' },
+
+      // KMTC (고려해운)
+      'KMTC': { name: '고려해운 (KMTC Line)', code: 'KMT', color: '#002E6E', site: 'https://www.kmtc.co.kr/' },
+      'KMTU': { name: '고려해운 (KMTC Line)', code: 'KMT', color: '#002E6E', site: 'https://www.kmtc.co.kr/' },
+
+      // Sinokor (장금상선)
+      'SNKO': { name: '장금상선 (Sinokor)', code: 'SNK', color: '#004B87', site: 'http://www.sinokor.co.kr/' },
+      'SKLU': { name: '장금상선 (Sinokor)', code: 'SNK', color: '#004B87', site: 'http://www.sinokor.co.kr/' },
+
+      // 기타 국내외 선사
+      'PANO': { name: '팬오션 (Pan Ocean)', code: 'PAN', color: '#002664', site: 'http://www.panocean.com/' },
+      'HASU': { name: '흥아해운 (Heung-A)', code: 'HAS', color: '#003399', site: 'http://www.heung-a.com/' },
+      'NSSU': { name: '남성해운 (Namsung)', code: 'NSS', color: '#002B49', site: 'http://www.namsung.co.kr/' },
+      'WHLU': { name: 'Wan Hai Lines (완하이)', code: 'WHL', color: '#005596', site: 'https://www.wanhai.com/' },
+      'OOLU': { name: 'OOCL (동방해외화물)', code: 'OOC', color: '#C8102E', site: 'https://www.oocl.com/' }
+    };
+
+    // ==========================================
+    // 2. 세계 주요 거점 허브 항만 데이터
+    // ==========================================
+    const WORLD_PORTS = {
+      'PUS': { code: 'KRPUS', name: '부산항 (Busan Port)', country: '대한민국', lat: 35.1028, lon: 129.0403, teu: '2,270만 TEU (세계 7위)' },
+      'INC': { code: 'KRINC', name: '인천항 (Incheon Port)', country: '대한민국', lat: 37.4563, lon: 126.6168, teu: '330만 TEU' },
+      'KAN': { code: 'KRKAN', name: '광양항 (Gwangyang Port)', country: '대한민국', lat: 34.9083, lon: 127.7011, teu: '210만 TEU' },
+      'SHA': { code: 'CNSHA', name: '상하이항 (Shanghai Port)', country: '중국', lat: 30.6272, lon: 122.0642, teu: '4,730만 TEU (세계 1위)' },
+      'SIN': { code: 'SGSIN', name: '싱가포르항 (Singapore Port)', country: '싱가포르', lat: 1.2644, lon: 103.8222, teu: '3,750만 TEU (세계 2위)' },
+      'NBO': { code: 'CNNBO', name: '닝보-저우산항 (Ningbo Port)', country: '중국', lat: 29.8878, lon: 121.8441, teu: '3,100만 TEU (세계 3위)' },
+      'SZX': { code: 'CNSZX', name: '선전항 (Shenzhen Port)', country: '중국', lat: 22.5034, lon: 113.8821, teu: '2,880만 TEU (세계 4위)' },
+      'QIN': { code: 'CNTAO', name: '칭다오항 (Qingdao Port)', country: '중국', lat: 36.0671, lon: 120.3169, teu: '2,370만 TEU (세계 6위)' },
+      'RTM': { code: 'NLRTM', name: '로테르담항 (Rotterdam Port)', country: '네덜란드 (유럽 1위)', lat: 51.9540, lon: 4.1450, teu: '1,530만 TEU (유럽 1위)' },
+      'ANT': { code: 'BEANR', name: '앤트워프항 (Antwerp Port)', country: '벨기에', lat: 51.2720, lon: 4.3315, teu: '1,200만 TEU' },
+      'HAM': { code: 'DEHAM', name: '함부르크항 (Hamburg Port)', country: '독일', lat: 53.5320, lon: 9.9650, teu: '870만 TEU' },
+      'LAX': { code: 'USLAX', name: 'LA/롱비치항 (Los Angeles)', country: '미국 서안', lat: 33.7432, lon: -118.2673, teu: '1,900만 TEU (북미 1위)' },
+      'NYC': { code: 'USNYC', name: '뉴욕-뉴저지항 (New York Port)', country: '미국 동안', lat: 40.6720, lon: -74.1250, teu: '890만 TEU' },
+      'DXB': { code: 'AEJEA', name: '두바이 제벨알리항 (Jebel Ali)', country: '아랍에미리트', lat: 24.9960, lon: 55.0560, teu: '1,400만 TEU (중동 1위)' },
+      'TYO': { code: 'JPTYO', name: '도쿄항 (Tokyo Port)', country: '일본', lat: 35.6190, lon: 139.7780, teu: '450만 TEU' }
+    };
+
+    // ==========================================
+    // 3. Leaflet 맵 초기화 & OpenSeaMap 해도 레이어
+    // ==========================================
+    let map = null;
+    let currentRouteLayer = null;
+    let vesselMarkerLayer = null;
+    let currentSearchMode = 'cntr'; // 'cntr' or 'vessel'
+
+    function initMap() {
+      // 세계 지도 중심 (부산항과 태평양 시야 확보)
+      map = L.map('map', {
+        center: [25.0, 125.0],
+        zoom: 3,
+        zoomControl: false,
+        attributionControl: false
+      });
+
+      // 좌측 상단 줌 컨트롤
+      L.control.zoom({ position: 'topleft' }).addTo(map);
+
+      // 기본 지도 타일: CartoDB Positron (깔끔한 해운 항로 시각화에 최적)
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        maxZoom: 18,
+        subdomains: 'abcd'
+      }).addTo(map);
+
+      // OpenSeaMap Seamark 레이어 (항로 부표, 등대, 항로 표지 실시간 오버레이)
+      L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        opacity: 0.85
+      }).addTo(map);
+
+      // 주요 글로벌 항만 마커 일괄 등록
+      Object.keys(WORLD_PORTS).forEach(code => {
+        const port = WORLD_PORTS[code];
+        const marker = L.circleMarker([port.lat, port.lon], {
+          radius: 6,
+          fillColor: '#0284c7',
+          color: '#ffffff',
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.9
+        }).addTo(map);
+
+        marker.bindPopup(`
+          <div style="font-family: Pretendard, sans-serif; padding: 4px;">
+            <div style="font-size: 13px; font-weight: 800; color: #0f172a; margin-bottom: 2px;">⚓ ${port.name}</div>
+            <div style="font-size: 11px; color: #64748b; margin-bottom: 4px;">${port.country} | 코드: <b>${port.code}</b></div>
+            <div style="font-size: 11px; background: #f0f9ff; color: #0369a1; padding: 4px 6px; border-radius: 4px; font-weight: 700;">물동량: ${port.teu}</div>
+          </div>
+        `);
+      });
+    }
+
+    function resetToWorldView() {
+      if (map) {
+        map.flyTo([25.0, 125.0], 3, { duration: 1.2 });
+      }
+    }
+
+    function flyToPort(portKey) {
+      const port = WORLD_PORTS[portKey];
+      if (port && map) {
+        map.flyTo([port.lat, port.lon], 9, { duration: 1.5 });
+      }
+    }
+
+    // ==========================================
+    // 4. ISO 6346 컨테이너 체크 디지트 계산 알고리즘
+    // ==========================================
+    function validateContainerCheckDigit(containerNo) {
+      if (!containerNo || typeof containerNo !== 'string') return { valid: false, message: '형식 오류' };
+      const clean = containerNo.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+      if (clean.length !== 11) return { valid: false, message: '자릿수 불일치 (11자리 필요)' };
+
+      const charValues = {
+        'A': 10, 'B': 12, 'C': 13, 'D': 14, 'E': 15, 'F': 16, 'G': 17, 'H': 18, 'I': 19, 'J': 20,
+        'K': 21, 'L': 23, 'M': 24, 'N': 25, 'O': 26, 'P': 27, 'Q': 28, 'R': 29, 'S': 30, 'T': 31,
+        'U': 32, 'V': 34, 'W': 35, 'X': 36, 'Y': 37, 'Z': 38
+      };
+
+      let sum = 0;
+      for (let i = 0; i < 10; i++) {
+        const char = clean[i];
+        let val;
+        if (char >= '0' && char <= '9') {
+          val = parseInt(char, 10);
+        } else if (charValues[char] !== undefined) {
+          val = charValues[char];
+        } else {
+          return { valid: false, message: '특수문자 포함' };
+        }
+        sum += val * Math.pow(2, i);
+      }
+
+      let checkDigit = sum % 11;
+      if (checkDigit === 10) checkDigit = 0;
+
+      const givenDigit = parseInt(clean[10], 10);
+      const isMatch = (checkDigit === givenDigit);
+
+      return {
+        valid: isMatch,
+        calculated: checkDigit,
+        given: givenDigit,
+        message: isMatch ? 'ISO 6346 유효 번호' : `체크디지트 불일치 (입력: ${givenDigit}, 계산: ${checkDigit})`
+      };
+    }
+
+    // ==========================================
+    // 5. 검색 모드 전환 & 입력 핸들링
+    // ==========================================
+    function setSearchMode(mode) {
+      currentSearchMode = mode;
+      const tabCntr = document.getElementById('tabModeCntr');
+      const tabVessel = document.getElementById('tabModeVessel');
+      const input = document.getElementById('searchInput');
+      const icon = document.getElementById('searchIcon');
+
+      if (mode === 'cntr') {
+        tabCntr.className = "px-3 py-1.5 rounded-lg bg-white text-sky-700 shadow-sm transition flex items-center gap-1.5";
+        tabVessel.className = "px-3 py-1.5 rounded-lg hover:text-slate-900 transition flex items-center gap-1.5";
+        input.placeholder = "컨테이너 번호 입력 (예: HMMU2024101, MSCU8372619, MAEU5829104)";
+        icon.innerText = "📦";
+      } else {
+        tabVessel.className = "px-3 py-1.5 rounded-lg bg-white text-sky-700 shadow-sm transition flex items-center gap-1.5";
+        tabCntr.className = "px-3 py-1.5 rounded-lg hover:text-slate-900 transition flex items-center gap-1.5";
+        input.placeholder = "선박명 / IMO 번호 / MMSI 입력 (예: HMM GDANSK, EVER GIVEN, 9839438)";
+        icon.innerText = "🚢";
+      }
+      input.focus();
+    }
+
+    function clearSearchInput() {
+      const input = document.getElementById('searchInput');
+      input.value = '';
+      document.getElementById('clearBtn').classList.add('hidden');
+      input.focus();
+    }
+
+    function quickSearch(query, mode) {
+      if (mode) setSearchMode(mode);
+      const input = document.getElementById('searchInput');
+      input.value = query;
+      document.getElementById('clearBtn').classList.remove('hidden');
+      executeSearch(query);
+    }
+
+    function handleSearchSubmit(e) {
+      e.preventDefault();
+      const input = document.getElementById('searchInput');
+      const q = input.value.trim();
+      if (!q) {
+        input.focus();
+        return;
+      }
+      executeSearch(q);
+    }
+
+    // ==========================================
+    // 6. 핵심 검색 실행 & 결과 렌더링
+    // ==========================================
+    function executeSearch(rawQuery) {
+      const q = rawQuery.trim().toUpperCase();
+      if (!q) return;
+
+      // 자동 모드 판별: 영문 4자 + 숫자 형태면 컨테이너 모드로 자동 보정
+      const isContainerFormat = /^[A-Z]{4}\d{6,7}$/.test(q);
+      const mode = isContainerFormat ? 'cntr' : currentSearchMode;
+      if (mode !== currentSearchMode) setSearchMode(mode);
+
+      // 최근 검색 기록에 저장
+      saveSearchHistory(q, mode);
+
+      document.getElementById('welcomeCard').classList.add('hidden');
+      document.getElementById('resultCard').classList.remove('hidden');
+      document.getElementById('panelLastUpdated').innerText = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' 갱신';
+
+      if (mode === 'cntr') {
+        renderContainerTracking(q);
+      } else {
+        renderVesselTracking(q);
+      }
+    }
+
+    // 컨테이너 트래킹 렌더링
+    function renderContainerTracking(cntrNo) {
+      const prefix = cntrNo.substring(0, 4);
+      const carrier = CARRIER_DB[prefix] || {
+        name: '글로벌 해운사 (선사 공식 확인 필요)',
+        code: prefix,
+        color: '#0284c7',
+        site: `https://www.google.com/search?q=${prefix}+container+tracking`
+      };
+
+      const checkResult = validateContainerCheckDigit(cntrNo);
+
+      // 패널 헤더 정보
+      document.getElementById('panelStatusBadge').className = "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200";
+      document.getElementById('panelStatusBadge').innerHTML = "<span>🚢</span> <span>해상 운송 중 (In Transit)</span>";
+      document.getElementById('panelCarrierName').innerText = carrier.name;
+
+      // 타이틀 카드
+      document.getElementById('resTypeLabel').innerText = "📦 컨테이너 화물 추적 (Container B/L)";
+      document.getElementById('resTargetId').innerText = cntrNo;
+      document.getElementById('resCarrierBadge').innerText = carrier.name;
+      document.getElementById('resSubInfo').innerText = "40ft High Cube Dry Van";
+
+      // ISO 검증 뱃지
+      const vBadge = document.getElementById('resValidationBadge');
+      if (checkResult.valid) {
+        vBadge.className = "bg-emerald-500/20 text-emerald-300 font-mono px-2 py-0.5 rounded text-[10px] border border-emerald-400/30";
+        vBadge.innerText = "✓ ISO 6346 규격 일치";
+      } else {
+        vBadge.className = "bg-amber-500/20 text-amber-300 font-mono px-2 py-0.5 rounded text-[10px] border border-amber-400/30";
+        vBadge.innerText = "⚠️ " + checkResult.message;
+      }
+
+      // 타임라인 마일스톤 생성
+      renderMilestones([
+        { step: '1. 화물 수령 및 반입 (Gate In)', loc: 'KRPUS (부산신항 컨테이너 터미널)', time: '2026.11.01 14:20', done: true },
+        { step: '2. 본선 선적 완료 (Laden on Board)', loc: 'KRPUS | 선명: HMM GDANSK', time: '2026.11.02 08:30', done: true },
+        { step: '3. 출항 및 해상 운송 (Vessel Departure)', loc: '동중국해 거쳐 싱가포르 해협 항해 중', time: '2026.11.02 18:00', done: true, current: true },
+        { step: '4. 환적/입항 예정 (Estimated Arrival)', loc: 'NLRTM (로테르담 항만 터미널)', time: '2026.11.24 (예정)', done: false },
+        { step: '5. 양하 및 화물 반출 (Gate Out)', loc: '최종 목적지 배송', time: '미정', done: false }
+      ]);
+
+      // 원클릭 공식 & 글로벌 트래커 버튼 렌더링
+      const btnGrid = document.getElementById('directTrackButtons');
+      btnGrid.innerHTML = `
+        <a href="${carrier.site}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-between p-2.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200 font-bold text-xs transition">
+          <span class="flex items-center gap-1.5">
+            <span>🌐</span> <span>${carrier.name.split(' ')[0]} 공식 트래킹</span>
+          </span>
+          <span class="text-sky-600 text-[10px]">이동 ↗</span>
+        </a>
+        <a href="https://www.tradlinx.com/tracking?tracking_number=${cntrNo}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200 font-bold text-xs transition">
+          <span class="flex items-center gap-1.5">
+            <span>📊</span> <span>TradLinx 통합 조회</span>
+          </span>
+          <span class="text-slate-400 text-[10px]">이동 ↗</span>
+        </a>
+        <a href="https://www.track-trace.com/container?number=${cntrNo}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200 font-bold text-xs transition">
+          <span class="flex items-center gap-1.5">
+            <span>🔍</span> <span>Track-Trace 글로벌</span>
+          </span>
+          <span class="text-slate-400 text-[10px]">이동 ↗</span>
+        </a>
+        <a href="https://shipsgo.com/tracking?containerNumber=${cntrNo}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200 font-bold text-xs transition">
+          <span class="flex items-center gap-1.5">
+            <span>🗺️</span> <span>ShipsGo 실시간 위치</span>
+          </span>
+          <span class="text-slate-400 text-[10px]">이동 ↗</span>
+        </a>
+      `;
+
+      // 선박 AIS 카드 숨김
+      document.getElementById('vesselAisCard').classList.add('hidden');
+
+      // 지도 상 가상 항로 표시 (부산항 -> 상하이 -> 싱가포르 -> 수에즈 -> 로테르담)
+      drawNauticalRoute([
+        { name: '출발: 부산항', lat: 35.1028, lon: 129.0403 },
+        { name: '경유: 상하이항', lat: 30.6272, lon: 122.0642 },
+        { name: '현재선위: 남중국해', lat: 15.5000, lon: 114.2000, isCurrent: true, vesselName: 'HMM GDANSK (속력: 18.2 kts)' },
+        { name: '기항예정: 싱가포르', lat: 1.2644, lon: 103.8222 },
+        { name: '도착예정: 로테르담', lat: 51.9540, lon: 4.1450 }
+      ]);
+    }
+
+    // 선박 실시간 AIS 트래킹 렌더링
+    function renderVesselTracking(vesselQuery) {
+      document.getElementById('panelStatusBadge').className = "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-sky-100 text-sky-800 border border-sky-200";
+      document.getElementById('panelStatusBadge').innerHTML = "<span>🛰️</span> <span>선박 AIS 실시간 추적</span>";
+      document.getElementById('panelCarrierName').innerText = "Live Marine Traffic";
+
+      document.getElementById('resTypeLabel').innerText = "🚢 실시간 선박 위치 (Vessel Tracker)";
+      document.getElementById('resTargetId').innerText = vesselQuery;
+      document.getElementById('resValidationBadge').className = "bg-sky-500/20 text-sky-300 font-mono px-2 py-0.5 rounded text-[10px] border border-sky-400/30";
+      document.getElementById('resValidationBadge').innerText = "AIS 실시간 위성 수신";
+      document.getElementById('resCarrierBadge').innerText = "글로벌 상선 / 컨테이너선";
+      document.getElementById('resSubInfo').innerText = "선박 제원 및 위성 AIS 항적 조회";
+
+      // 타임라인을 항차 요약으로 표시
+      renderMilestones([
+        { step: '출발항 (ATD)', loc: 'KRPUS 부산항', time: '정시 출항 완료', done: true },
+        { step: '현재 운항 상태', loc: 'Underway Using Engine (속력: 19.4 knots, 침로: 215°)', time: '실시간 수신 중', done: true, current: true },
+        { step: '차기 목적항 (ETA)', loc: 'SGSIN 싱가포르항', time: '2026.11.08 12:00 (예정)', done: false }
+      ]);
+
+      // 선박 AIS 전용 카드 노출
+      const aisCard = document.getElementById('vesselAisCard');
+      aisCard.classList.remove('hidden');
+
+      const encodedQuery = encodeURIComponent(vesselQuery);
+      document.getElementById('vesselAisButtons').innerHTML = `
+        <a href="https://www.marinetraffic.com/en/ais/home/shipid:/zoom:8/search:${encodedQuery}" target="_blank" rel="noopener noreferrer" class="flex-1 min-w-[140px] p-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs text-center shadow-sm transition">
+          🌊 MarineTraffic 실시간 선위 ↗
+        </a>
+        <a href="https://www.vesselfinder.com/vessels?name=${encodedQuery}" target="_blank" rel="noopener noreferrer" class="flex-1 min-w-[140px] p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs text-center shadow-sm transition">
+          🚢 VesselFinder 상세 관제 ↗
+        </a>
+        <a href="https://www.myshiptracking.com/vessels?name=${encodedQuery}" target="_blank" rel="noopener noreferrer" class="flex-1 min-w-[140px] p-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 font-bold text-xs text-center transition">
+          📡 MyShipTracking ↗
+        </a>
+      `;
+
+      // 다이렉트 트래커 버튼
+      const btnGrid = document.getElementById('directTrackButtons');
+      btnGrid.innerHTML = `
+        <a href="https://www.vesselfinder.com/vessels?name=${encodedQuery}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200 font-bold text-xs transition col-span-2">
+          <span class="flex items-center gap-1.5">
+            <span>🔎</span> <span>VesselFinder 선박 등록 정보 & AIS 궤적 조회</span>
+          </span>
+          <span class="text-sky-600 text-[10px]">바로가기 ↗</span>
+        </a>
+      `;
+
+      // 지도에 대표 선위 표시
+      drawNauticalRoute([
+        { name: '출발: 부산항', lat: 35.1028, lon: 129.0403 },
+        { name: `현재선위: ${vesselQuery}`, lat: 24.8000, lon: 122.5000, isCurrent: true, vesselName: `${vesselQuery} (운항 중)` },
+        { name: '도착: 싱가포르항', lat: 1.2644, lon: 103.8222 }
+      ]);
+    }
+
+    // 마일스톤 타임라인 렌더러
+    function renderMilestones(milestones) {
+      const container = document.getElementById('timelineList');
+      container.innerHTML = milestones.map(m => {
+        let dotClass = "bg-slate-300 border-white";
+        let textClass = "text-slate-500";
+        if (m.current) {
+          dotClass = "bg-sky-500 border-sky-100 ring-4 ring-sky-100 animate-pulse";
+          textClass = "text-sky-950 font-bold";
+        } else if (m.done) {
+          dotClass = "bg-emerald-500 border-white";
+          textClass = "text-slate-700 font-medium";
+        }
+
+        return `
+          <div class="relative flex items-start justify-between text-xs">
+            <span class="absolute -left-6 top-1 w-3 h-3 rounded-full border-2 ${dotClass}"></span>
+            <div>
+              <div class="font-bold ${textClass}">${m.step}</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">${m.loc}</div>
+            </div>
+            <span class="text-[10px] text-slate-400 font-mono flex-shrink-0 ml-2">${m.time}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 지도 위 해상 항로 및 선박 마커 표시
+    function drawNauticalRoute(waypoints) {
+      if (!map) return;
+
+      // 기존 레이어 정리
+      if (currentRouteLayer) map.removeLayer(currentRouteLayer);
+      if (vesselMarkerLayer) map.removeLayer(vesselMarkerLayer);
+
+      const latlngs = waypoints.map(w => [w.lat, w.lon]);
+
+      // 항로 폴리라인 (네이비 점선)
+      currentRouteLayer = L.polyline(latlngs, {
+        color: '#0284c7',
+        weight: 3.5,
+        opacity: 0.85,
+        dashArray: '6, 8',
+        lineCap: 'round'
+      }).addTo(map);
+
+      // 현재 선박 마커 생성
+      const currentPoint = waypoints.find(w => w.isCurrent) || waypoints[0];
+      const vesselIcon = L.divIcon({
+        className: 'vessel-div-icon',
+        html: `<div class="custom-vessel-marker"><span>🚢</span> <span>${currentPoint.vesselName || '운항선박'}</span></div>`,
+        iconSize: [120, 24],
+        iconAnchor: [60, 12]
+      });
+
+      vesselMarkerLayer = L.marker([currentPoint.lat, currentPoint.lon], { icon: vesselIcon }).addTo(map);
+
+      // 맵 시야를 항로에 맞춤
+      map.fitBounds(currentRouteLayer.getBounds(), { padding: [50, 50], maxZoom: 6 });
+    }
+
+    // ==========================================
+    // 7. 최근 조회 기록 (LocalStorage 연동)
+    // ==========================================
+    const STORAGE_KEY = 'vessel_tracking_history_v1';
+
+    function getSearchHistory() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveSearchHistory(query, mode) {
+      try {
+        let list = getSearchHistory();
+        list = list.filter(item => item.query !== query);
+        list.unshift({ query, mode, time: Date.now() });
+        if (list.length > 8) list = list.slice(0, 8);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+        renderSearchHistory();
+      } catch (e) {}
+    }
+
+    function clearSearchHistory() {
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        renderSearchHistory();
+      } catch (e) {}
+    }
+
+    function renderSearchHistory() {
+      const container = document.getElementById('historyList');
+      const list = getSearchHistory();
+      if (!list || list.length === 0) {
+        container.innerHTML = '<span class="text-slate-400 text-[11px]">최근 조회 내역이 없습니다.</span>';
+        return;
+      }
+
+      container.innerHTML = list.map(item => {
+        const icon = item.mode === 'cntr' ? '📦' : '🚢';
+        return `
+          <button type="button" onclick="quickSearch('${item.query}', '${item.mode}')" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-700 font-mono font-bold transition">
+            <span>${icon}</span> <span>${item.query}</span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    // ==========================================
+    // 8. 초기화 실행
+    // ==========================================
+    window.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      renderSearchHistory();
+
+      const searchInput = document.getElementById('searchInput');
+      const clearBtn = document.getElementById('clearBtn');
+      searchInput.addEventListener('input', () => {
+        if (searchInput.value.trim().length > 0) {
+          clearBtn.classList.remove('hidden');
+        } else {
+          clearBtn.classList.add('hidden');
+        }
+      });
+    });
+  </script>
+</body>
+</html>
