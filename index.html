@@ -48,10 +48,14 @@
       -webkit-tap-highlight-color: transparent;
     }
     #map {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
       width: 100%;
       height: 100%;
-      min-height: 340px;
-      z-index: 10;
+      z-index: 1;
     }
     .custom-port-marker {
       background: #0284c7;
@@ -326,13 +330,16 @@
   <main class="flex-1 flex flex-col lg:flex-row relative overflow-hidden">
 
     <!-- 좌측/상단: Leaflet 인터랙티브 해도 지도 -->
-    <div class="flex-1 relative bg-slate-200 min-h-[300px]">
+    <div class="flex-1 relative w-full h-[45vh] lg:h-full min-h-[360px] bg-slate-100 overflow-hidden">
       <div id="map"></div>
 
       <!-- 지도 우측 상단 플로팅 지도 레이어 전환 컨트롤러 -->
       <div class="absolute top-3 right-3 z-20 flex items-center bg-white/95 backdrop-blur-md p-1 rounded-xl shadow-lg border border-slate-200/80 text-xs font-bold text-slate-700">
-        <button id="btnLayer_voyager" onclick="switchMapLayer('voyager')" class="px-2.5 py-1.5 rounded-lg bg-sky-600 text-white font-black shadow-sm flex items-center gap-1 transition text-xs">
-          🗺️ <span class="hidden sm:inline">표준 해도</span>
+        <button id="btnLayer_osm" onclick="switchMapLayer('osm')" class="px-2.5 py-1.5 rounded-lg bg-sky-600 text-white font-black shadow-sm flex items-center gap-1 transition text-xs">
+          🗺️ <span class="hidden sm:inline">표준 지도</span>
+        </button>
+        <button id="btnLayer_ocean" onclick="switchMapLayer('ocean')" class="px-2.5 py-1.5 rounded-lg hover:bg-slate-100 text-slate-600 font-bold flex items-center gap-1 transition text-xs">
+          🌊 <span class="hidden sm:inline">해양 해도</span>
         </button>
         <button id="btnLayer_satellite" onclick="switchMapLayer('satellite')" class="px-2.5 py-1.5 rounded-lg hover:bg-slate-100 text-slate-600 font-bold flex items-center gap-1 transition text-xs">
           🛰️ <span class="hidden sm:inline">위성 관제</span>
@@ -1129,7 +1136,7 @@
     let currentBaseLayer = null;
     let seamarkOverlayLayer = null;
     let showSeamarks = true;
-    let currentLayerKey = 'voyager';
+    let currentLayerKey = 'osm';
 
     let currentRoutePolyline = null;
     let currentWaypointMarkers = [];
@@ -1139,17 +1146,25 @@
     let currentTargetId = '';
 
     const MAP_BASE_LAYERS = {
-      voyager: {
-        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-        options: { maxZoom: 19, subdomains: 'abcd' }
+      osm: {
+        name: '표준 지도',
+        url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        options: { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }
+      },
+      ocean: {
+        name: '해양 해도',
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}',
+        options: { maxZoom: 13, attribution: 'Tiles &copy; Esri &mdash; Marine & Ocean Basemap' }
       },
       satellite: {
+        name: '위성 관제',
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        options: { maxZoom: 19 }
+        options: { maxZoom: 18, attribution: 'Tiles &copy; Esri &mdash; Earthstar Geographics' }
       },
       dark: {
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        options: { maxZoom: 19, subdomains: 'abcd' }
+        name: '야간 모드',
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+        options: { maxZoom: 16, attribution: 'Tiles &copy; Esri' }
       }
     };
 
@@ -1163,8 +1178,8 @@
 
       L.control.zoom({ position: 'topleft' }).addTo(map);
 
-      // 기본 Voyager 베이스 레이어 등록
-      currentBaseLayer = L.tileLayer(MAP_BASE_LAYERS.voyager.url, MAP_BASE_LAYERS.voyager.options).addTo(map);
+      // 기본 OSM 베이스 레이어 등록 (무료, 안정적, 워터마크 없음)
+      currentBaseLayer = L.tileLayer(MAP_BASE_LAYERS.osm.url, MAP_BASE_LAYERS.osm.options).addTo(map);
 
       // OpenSeaMap 해도 seamark 오버레이 (등대, 부표)
       seamarkOverlayLayer = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
@@ -1192,9 +1207,14 @@
           </div>
         `);
       });
+
+      // 리사이즈 및 레이아웃 안정화 후 맵 렌더링 갱신
+      setTimeout(() => { if (map) map.invalidateSize(); }, 150);
+      setTimeout(() => { if (map) map.invalidateSize(); }, 600);
+      window.addEventListener('resize', () => { if (map) map.invalidateSize(); });
     }
 
-    // 맵 레이어 스위처 (표준 해도 / 위성 관제 / 야간 모드)
+    // 맵 레이어 스위처 (표준 지도 / 해양 해도 / 위성 관제 / 야간 모드)
     function switchMapLayer(layerKey) {
       if (!map || !MAP_BASE_LAYERS[layerKey]) return;
       currentLayerKey = layerKey;
@@ -1205,7 +1225,7 @@
       currentBaseLayer = L.tileLayer(MAP_BASE_LAYERS[layerKey].url, MAP_BASE_LAYERS[layerKey].options).addTo(map);
       currentBaseLayer.bringToBack();
 
-      ['voyager', 'satellite', 'dark'].forEach(k => {
+      ['osm', 'ocean', 'satellite', 'dark'].forEach(k => {
         const btn = document.getElementById('btnLayer_' + k);
         if (btn) {
           if (k === layerKey) {
@@ -1215,7 +1235,7 @@
           }
         }
       });
-      showToast(`지도 레이어가 '${layerKey === 'voyager' ? '표준 해도' : layerKey === 'satellite' ? '위성 관제' : '야간 모드'}'(으)로 변경되었습니다.`);
+      showToast(`지도 레이어가 '${MAP_BASE_LAYERS[layerKey].name}'(으)로 변경되었습니다.`);
     }
 
     // 해도 seamark 오버레이 토글
