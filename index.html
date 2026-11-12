@@ -210,6 +210,28 @@
       -ms-overflow-style: none;
       scrollbar-width: none;
     }
+    /* PC 우측 패널 갱신 시각 피드백 & 전용 스크롤바 */
+    @keyframes panelUpdateFlash {
+      0% { transform: scale(0.99); opacity: 0.85; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .panel-updated-flash {
+      animation: panelUpdateFlash 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    #panelContent::-webkit-scrollbar {
+      width: 7px;
+    }
+    #panelContent::-webkit-scrollbar-track {
+      background: #f8fafc;
+      border-radius: 4px;
+    }
+    #panelContent::-webkit-scrollbar-thumb {
+      background: #94a3b8;
+      border-radius: 4px;
+    }
+    #panelContent::-webkit-scrollbar-thumb:hover {
+      background: #64748b;
+    }
   </style>
 </head>
 <body class="bg-slate-100 text-slate-800 antialiased min-h-screen lg:h-screen flex flex-col lg:overflow-hidden">
@@ -250,10 +272,10 @@
       <!-- 검색 모드 탭 & AIS 위성 수신 상태 -->
       <div class="flex items-center justify-between gap-2 mb-2 flex-wrap">
         <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600">
-          <button type="button" id="tabModeCntr" onclick="setSearchMode('cntr')" class="px-3 py-1.5 rounded-lg bg-white text-sky-700 shadow-sm transition flex items-center gap-1.5">
+          <button type="button" id="tabModeCntr" onclick="setSearchMode('cntr', true)" class="px-3 py-1.5 rounded-lg bg-white text-sky-700 shadow-sm transition flex items-center gap-1.5">
             <span>📦</span> <span>컨테이너 번호 (B/L)</span>
           </button>
-          <button type="button" id="tabModeVessel" onclick="setSearchMode('vessel')" class="px-3 py-1.5 rounded-lg hover:text-slate-900 transition flex items-center gap-1.5">
+          <button type="button" id="tabModeVessel" onclick="setSearchMode('vessel', true)" class="px-3 py-1.5 rounded-lg hover:text-slate-900 transition flex items-center gap-1.5">
             <span>🚢</span> <span>선박명 / IMO / MMSI</span>
           </button>
         </div>
@@ -266,7 +288,7 @@
       </div>
 
       <!-- 검색창 폼 -->
-      <form onsubmit="handleSearchSubmit(event)" class="relative flex items-center gap-2">
+      <form id="searchForm" onsubmit="handleSearchSubmit(event)" class="relative flex items-center gap-2">
         <div class="relative flex-1">
           <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 text-base">
             <span id="searchIcon">📦</span>
@@ -573,13 +595,68 @@
           </div>
 
           <!-- 5. 원클릭 공식 & 글로벌 트래커 다이렉트 버튼 그리드 -->
-          <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm space-y-2.5">
+          <div id="directTrackSection" class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm space-y-2.5">
             <div class="text-xs font-black text-slate-900 flex items-center justify-between">
               <span>🔗 원클릭 선사 및 화물 트래킹 연동</span>
               <span class="text-[10px] text-slate-400 font-normal">새 창으로 안전하게 연결</span>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" id="directTrackButtons">
               <!-- JS 동적 생성 -->
+            </div>
+          </div>
+
+          <!-- 6. 글로벌 메가 항만 전용 상세 관제 섹션 (항만 조회 시 활성화) -->
+          <div id="portSection" class="hidden space-y-3">
+            <!-- 항만 기본 지표 그리드 -->
+            <div class="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 shadow-sm space-y-3">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                  <span>⚓ 항만 터미널 운영 및 물동량 지표</span>
+                </h3>
+                <span id="portTeuBadge" class="text-sky-700 font-mono font-black text-xs bg-sky-100 px-2 py-0.5 rounded-full border border-sky-200">연간 2,270만 TEU</span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2 text-xs">
+                <div class="bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm">
+                  <div class="text-[10px] text-slate-400 font-bold">국가 및 권역</div>
+                  <div class="font-extrabold text-slate-800 mt-0.5" id="portCountry">대한민국</div>
+                  <div class="text-[10px] text-slate-500 font-mono" id="portCoords">35.1028°N, 129.0403°E</div>
+                </div>
+                <div class="bg-sky-50/80 p-2.5 rounded-xl border border-sky-100 shadow-sm">
+                  <div class="text-[10px] text-sky-600 font-bold">UN/LOCODE 표준 코드</div>
+                  <div class="font-black text-sky-900 mt-0.5 font-mono text-sm" id="portLocode">KRPUS</div>
+                  <div class="text-[10px] text-sky-700 font-medium" id="portRank">세계 7위 컨테이너 메가허브</div>
+                </div>
+              </div>
+
+              <!-- 항만 특성 및 설명 -->
+              <div class="bg-white p-2.5 rounded-xl border border-slate-100 text-xs text-slate-600 leading-relaxed" id="portDescription">
+                동북아시아의 핵심 환적 거점 항만으로 24시간 연중무휴 입출항이 가능한 국제 무역항입니다.
+              </div>
+            </div>
+
+            <!-- 기항 및 연계 정기선 선박 목록 -->
+            <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+              <div class="flex items-center justify-between mb-2.5">
+                <h4 class="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                  <span>🚢</span> <span>기항 및 출항 연계 정기선 선박</span>
+                </h4>
+                <span class="text-[10px] text-sky-600 font-bold bg-sky-50 px-2 py-0.5 rounded-full" id="portVesselCount">4척 운항 중</span>
+              </div>
+              <div id="portVesselList" class="space-y-2">
+                <!-- JS 동적 생성 -->
+              </div>
+            </div>
+
+            <!-- 항만 공식 포털 및 터미널 운영 관제 링크 -->
+            <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm space-y-2">
+              <div class="text-xs font-black text-slate-900 flex items-center justify-between">
+                <span>🔗 항만공사 및 공공 해운물류 포털</span>
+                <span class="text-[10px] text-slate-400 font-normal">공식 사이트 연결</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" id="portOfficialLinks">
+                <!-- JS 동적 생성 -->
+              </div>
             </div>
           </div>
 
@@ -1143,21 +1220,21 @@
     // 4. 세계 주요 거점 허브 항만 데이터
     // ==========================================
     const WORLD_PORTS = {
-      'PUS': { code: 'KRPUS', name: '부산항 (Busan Port)', country: '대한민국', lat: 35.1028, lon: 129.0403, teu: '2,270만 TEU (세계 7위)' },
-      'INC': { code: 'KRINC', name: '인천항 (Incheon Port)', country: '대한민국', lat: 37.4563, lon: 126.6168, teu: '330만 TEU' },
-      'KAN': { code: 'KRKAN', name: '광양항 (Gwangyang Port)', country: '대한민국', lat: 34.9083, lon: 127.7011, teu: '210만 TEU' },
-      'SHA': { code: 'CNSHA', name: '상하이항 (Shanghai Port)', country: '중국', lat: 30.6272, lon: 122.0642, teu: '4,730만 TEU (세계 1위)' },
-      'SIN': { code: 'SGSIN', name: '싱가포르항 (Singapore Port)', country: '싱가포르', lat: 1.2644, lon: 103.8222, teu: '3,750만 TEU (세계 2위)' },
-      'NBO': { code: 'CNNBO', name: '닝보-저우산항 (Ningbo Port)', country: '중국', lat: 29.8878, lon: 121.8441, teu: '3,100만 TEU (세계 3위)' },
-      'SZX': { code: 'CNSZX', name: '선전항 (Shenzhen Port)', country: '중국', lat: 22.5034, lon: 113.8821, teu: '2,880만 TEU (세계 4위)' },
-      'QIN': { code: 'CNTAO', name: '칭다오항 (Qingdao Port)', country: '중국', lat: 36.0671, lon: 120.3169, teu: '2,370만 TEU (세계 6위)' },
-      'RTM': { code: 'NLRTM', name: '로테르담항 (Rotterdam Port)', country: '네덜란드 (유럽 1위)', lat: 51.9540, lon: 4.1450, teu: '1,530만 TEU (유럽 1위)' },
-      'ANT': { code: 'BEANR', name: '앤트워프항 (Antwerp Port)', country: '벨기에', lat: 51.2720, lon: 4.3315, teu: '1,200만 TEU' },
-      'HAM': { code: 'DEHAM', name: '함부르크항 (Hamburg Port)', country: '독일', lat: 53.5320, lon: 9.9650, teu: '870만 TEU' },
-      'LAX': { code: 'USLAX', name: 'LA/롱비치항 (Los Angeles)', country: '미국 서안', lat: 33.7432, lon: -118.2673, teu: '1,900만 TEU (북미 1위)' },
-      'NYC': { code: 'USNYC', name: '뉴욕-뉴저지항 (New York Port)', country: '미국 동안', lat: 40.6720, lon: -74.1250, teu: '890만 TEU' },
-      'DXB': { code: 'AEJEA', name: '두바이 제벨알리항 (Jebel Ali)', country: '아랍에미리트', lat: 24.9960, lon: 55.0560, teu: '1,400만 TEU (중동 1위)' },
-      'TYO': { code: 'JPTYO', name: '도쿄항 (Tokyo Port)', country: '일본', lat: 35.6190, lon: 139.7780, teu: '450만 TEU' }
+      'PUS': { code: 'KRPUS', name: '부산항 (Busan Port)', country: '대한민국', lat: 35.1028, lon: 129.0403, teu: '2,270만 TEU (세계 7위)', site: 'https://www.busanpa.com/', siteName: '부산항만공사 (BPA)', info: '동북아 최대 환적 허브 항만으로 24시간 연중무휴 입출항이 가능한 천혜의 부동항입니다.' },
+      'INC': { code: 'KRINC', name: '인천항 (Incheon Port)', country: '대한민국', lat: 37.4563, lon: 126.6168, teu: '330만 TEU (수도권 거점)', site: 'https://www.icpa.or.kr/', siteName: '인천항만공사 (IPA)', info: '수도권 관문 항만으로 대중국 및 동남아 정기 컨테이너선이 집중 기항합니다.' },
+      'KAN': { code: 'KRKAN', name: '광양항 (Gwangyang Port)', country: '대한민국', lat: 34.9083, lon: 127.7011, teu: '210만 TEU (남해안 거점)', site: 'https://www.ygpa.or.kr/', siteName: '여수광양항만공사 (YGPA)', info: '남해안 종합 복합물류 항만으로 석유화학·제철 및 정기 컨테이너선을 처리합니다.' },
+      'SHA': { code: 'CNSHA', name: '상하이항 (Shanghai Port)', country: '중국', lat: 30.6272, lon: 122.0642, teu: '4,730만 TEU (세계 1위)', site: 'https://www.portshanghai.com.cn/', siteName: '상하이국제항무집단 (SIPG)', info: '세계 1위 컨테이너 메가허브로 양산 심수항을 통해 2만 TEU급 초대형선을 수용합니다.' },
+      'SIN': { code: 'SGSIN', name: '싱가포르항 (Singapore Port)', country: '싱가포르', lat: 1.2644, lon: 103.8222, teu: '3,750만 TEU (세계 2위)', site: 'https://www.singaporepsa.com/', siteName: 'PSA Singapore', info: '말라카 해협의 전략적 요충지이자 글로벌 선사들의 세계 최대 환적 허브입니다.' },
+      'NBO': { code: 'CNNBO', name: '닝보-저우산항 (Ningbo Port)', country: '중국', lat: 29.8878, lon: 121.8441, teu: '3,100만 TEU (세계 3위)', site: 'https://www.nbport.com.cn/', siteName: '닝보저우산항 공사', info: '중국 장강 삼각주 남단의 천혜 심수항으로 유럽·미주 기간항로가 집결합니다.' },
+      'SZX': { code: 'CNSZX', name: '선전항 (Shenzhen Port)', country: '중국', lat: 22.5034, lon: 113.8821, teu: '2,880만 TEU (세계 4위)', site: 'https://www.szport.gov.cn/', siteName: '선전시 항만국', info: '남중국 주강 삼각주의 대표 수출제조 화물 관문으로 옌톈·서커우 터미널을 보유합니다.' },
+      'QIN': { code: 'CNTAO', name: '칭다오항 (Qingdao Port)', country: '중국', lat: 36.0671, lon: 120.3169, teu: '2,370만 TEU (세계 6위)', site: 'https://www.qingdao-port.com/', siteName: '칭다오항만그룹', info: '중국 산둥반도 핵심 무역항으로 한중일 황해권 환적 물동량이 집중됩니다.' },
+      'RTM': { code: 'NLRTM', name: '로테르담항 (Rotterdam Port)', country: '네덜란드 (유럽 1위)', lat: 51.9540, lon: 4.1450, teu: '1,530만 TEU (유럽 1위)', site: 'https://www.portofrotterdam.com/', siteName: '로테르담 항만청 (Port of Rotterdam)', info: '유럽 대륙 최대 관문 항만으로 라인강 내륙 수운과 유럽 전역 철도망이 직결됩니다.' },
+      'ANT': { code: 'BEANR', name: '앤트워프항 (Antwerp Port)', country: '벨기에', lat: 51.2720, lon: 4.3315, teu: '1,200만 TEU (유럽 2위)', site: 'https://www.portofantwerpbruges.com/', siteName: '앤트워프-브뤼헤 항만청', info: '서유럽 내륙 깊숙이 위치한 화학 및 컨테이너 복합 물류 관문입니다.' },
+      'HAM': { code: 'DEHAM', name: '함부르크항 (Hamburg Port)', country: '독일', lat: 53.5320, lon: 9.9650, teu: '870만 TEU (독일 1위)', site: 'https://www.hafen-hamburg.de/', siteName: '함부르크 항만청', info: '엘베강 하구의 독일 최대 항만이이자 중·동부 유럽 철도 연결 중심지입니다.' },
+      'LAX': { code: 'USLAX', name: 'LA/롱비치항 (Los Angeles)', country: '미국 서안', lat: 33.7432, lon: -118.2673, teu: '1,900만 TEU (북미 1위)', site: 'https://www.portoflosangeles.org/', siteName: 'LA 항만청 (Port of LA)', info: '북미 최대 컨테이너 복합항으로 아시아-태평양 수입 화물 및 대륙횡단 철도 관문입니다.' },
+      'NYC': { code: 'USNYC', name: '뉴욕-뉴저지항 (New York Port)', country: '미국 동안', lat: 40.6720, lon: -74.1250, teu: '890만 TEU (미 동안 1위)', site: 'https://www.panynj.gov/port/en/index.html', siteName: '뉴욕뉴저지 항만공사 (PANYNJ)', info: '미국 대서양 연안 최대 무역항이자 미국 최대 소비권역 뉴욕 메트로 관문입니다.' },
+      'DXB': { code: 'AEJEA', name: '두바이 제벨알리항 (Jebel Ali)', country: '아랍에미리트', lat: 24.9960, lon: 55.0560, teu: '1,400만 TEU (중동 1위)', site: 'https://www.dpworld.com/', siteName: 'DP World Jebel Ali', info: '중동·인도양 권역 최대 인공 항만으로 중동-아프리카-유럽 교역 허브입니다.' },
+      'TYO': { code: 'JPTYO', name: '도쿄항 (Tokyo Port)', country: '일본', lat: 35.6190, lon: 139.7780, teu: '450만 TEU (일본 1위)', site: 'https://www.kouwan.metro.tokyo.lg.jp/', siteName: '도쿄도 항만국', info: '일본 수도권 4,000만 인구의 소비 물류를 전담하는 일본 최대 무역항입니다.' }
     };
 
     // ==========================================
@@ -1222,7 +1299,7 @@
       Object.keys(WORLD_PORTS).forEach(code => {
         const port = WORLD_PORTS[code];
         const marker = L.circleMarker([port.lat, port.lon], {
-          radius: 5.5,
+          radius: 6,
           fillColor: '#0284c7',
           color: '#ffffff',
           weight: 2,
@@ -1230,11 +1307,18 @@
           fillOpacity: 0.95
         }).addTo(map);
 
+        marker.on('click', () => {
+          renderPortDetails(code);
+        });
+
         marker.bindPopup(`
-          <div style="font-family: Pretendard, sans-serif; padding: 4px; min-width: 170px;">
+          <div style="font-family: Pretendard, sans-serif; padding: 4px; min-width: 180px;">
             <div style="font-size: 13px; font-weight: 800; color: #0f172a; margin-bottom: 2px;">⚓ ${port.name}</div>
             <div style="font-size: 11px; color: #64748b; margin-bottom: 4px;">${port.country} | 코드: <b>${port.code}</b></div>
-            <div style="font-size: 11px; background: #f0f9ff; color: #0369a1; padding: 4px 6px; border-radius: 4px; font-weight: 700;">물동량: ${port.teu}</div>
+            <div style="font-size: 11px; background: #f0f9ff; color: #0369a1; padding: 4px 6px; border-radius: 4px; font-weight: 700; margin-bottom: 6px;">물동량: ${port.teu}</div>
+            <button onclick="renderPortDetails('${code}')" style="width: 100%; background: #0284c7; color: #fff; border: none; padding: 5px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
+              항만 상세 관제 및 기항선 보기 ➔
+            </button>
           </div>
         `);
       });
@@ -1362,10 +1446,7 @@
     }
 
     function flyToPort(portKey) {
-      const port = WORLD_PORTS[portKey];
-      if (port && map) {
-        map.flyTo([port.lat, port.lon], 9, { duration: 1.5 });
-      }
+      renderPortDetails(portKey);
     }
 
     // ==========================================
@@ -1424,7 +1505,7 @@
     // ==========================================
     // 7. 검색 모드 전환 및 입력 핸들링
     // ==========================================
-    function setSearchMode(mode) {
+    function setSearchMode(mode, doFocus = false) {
       currentSearchMode = mode;
       const tabCntr = document.getElementById('tabModeCntr');
       const tabVessel = document.getElementById('tabModeVessel');
@@ -1439,10 +1520,10 @@
       } else {
         tabVessel.className = "px-3 py-1.5 rounded-lg bg-white text-sky-700 shadow-sm transition flex items-center gap-1.5";
         tabCntr.className = "px-3 py-1.5 rounded-lg hover:text-slate-900 transition flex items-center gap-1.5";
-        input.placeholder = "선박명 / IMO 번호 / MMSI 입력 (예: HMM GDANSK, EVER GIVEN, 9863314)";
+        input.placeholder = "선박명 / IMO 번호 / MMSI / 항만명 입력 (예: HMM GDANSK, EVER GIVEN, 부산항)";
         icon.innerText = "🚢";
       }
-      input.focus();
+      if (doFocus) input.focus();
     }
 
     function clearSearchInput() {
@@ -1471,29 +1552,100 @@
       executeSearch(q);
     }
 
+    // 스마트 쿼리 타입 자동 판별 (컨테이너 / 선박 / 항만)
+    function resolveQueryType(rawQuery) {
+      const q = rawQuery.trim();
+      const upper = q.toUpperCase();
+      const cleanAlphanum = upper.replace(/[^A-Z0-9]/g, '');
+
+      // 1. 컨테이너 표준 형식 체크: 영문 4자리 + 숫자 6~7자리 (예: HMMU2024101, MSCU8372619)
+      if (/^[A-Z]{4}\d{6,7}$/.test(cleanAlphanum)) {
+        return { type: 'cntr', query: cleanAlphanum };
+      }
+
+      // 2. IMO (7자리 숫자) 또는 MMSI (9자리 숫자) -> 선박
+      if (/^\d{7}$/.test(cleanAlphanum) || /^\d{9}$/.test(cleanAlphanum)) {
+        return { type: 'vessel', query: cleanAlphanum };
+      }
+
+      // 3. 주요 거점 항만 키워드/코드/한글명 체크
+      const koPortMap = {
+        '부산': 'PUS', '인천': 'INC', '광양': 'KAN', '상하이': 'SHA', '싱가포르': 'SIN',
+        '닝보': 'NBO', '선전': 'SZX', '칭다오': 'QIN', '로테르담': 'RTM', '앤트워프': 'ANT',
+        '함부르크': 'HAM', '롱비치': 'LAX', '엘에이': 'LAX', '뉴욕': 'NYC', '두바이': 'DXB', '도쿄': 'TYO'
+      };
+      for (const [ko, pKey] of Object.entries(koPortMap)) {
+        if (q.includes(ko)) {
+          return { type: 'port', portKey: pKey, query: WORLD_PORTS[pKey].name };
+        }
+      }
+      for (const [pKey, port] of Object.entries(WORLD_PORTS)) {
+        if (cleanAlphanum === pKey || cleanAlphanum === port.code.replace(/[^A-Z0-9]/g, '')) {
+          return { type: 'port', portKey: pKey, query: port.name };
+        }
+        if (upper.includes(pKey) || port.name.toUpperCase().includes(upper)) {
+          return { type: 'port', portKey: pKey, query: port.name };
+        }
+      }
+
+      // 4. 선박 데이터베이스 매칭 (선명, IMO, MMSI)
+      const matchedVessel = VESSEL_DB.find(v => {
+        const vClean = v.name.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        return vClean.includes(cleanAlphanum) || cleanAlphanum.includes(vClean) ||
+               (v.imo && v.imo === cleanAlphanum) || (v.mmsi && v.mmsi === cleanAlphanum);
+      });
+      if (matchedVessel) {
+        return { type: 'vessel', query: matchedVessel.name, vessel: matchedVessel };
+      }
+
+      // 5. 공백이 있거나 문자 조합인 경우 선박 모드로 우선 추정
+      if (q.includes(' ') || !/^[A-Z]{3,4}\d{4,8}$/.test(cleanAlphanum)) {
+        return { type: 'vessel', query: upper };
+      }
+
+      // 6. 현재 선택된 탭 모드를 기본값으로 적용
+      return { type: currentSearchMode, query: cleanAlphanum || upper };
+    }
+
     // ==========================================
     // 8. 핵심 검색 처리 및 렌더링
     // ==========================================
     function executeSearch(rawQuery) {
-      const q = rawQuery.trim().toUpperCase();
+      const q = rawQuery.trim();
       if (!q) return;
 
-      // 자동 모드 판별: 영문 4자 + 숫자 6~7자 형태면 컨테이너 모드로 자동 보정
-      const isContainerFormat = /^[A-Z]{4}\d{6,7}$/.test(q);
-      const mode = isContainerFormat ? 'cntr' : currentSearchMode;
-      if (mode !== currentSearchMode) setSearchMode(mode);
+      const resolved = resolveQueryType(q);
 
-      currentTargetId = q;
-      saveSearchHistory(q, mode);
+      if (resolved.type === 'port') {
+        renderPortDetails(resolved.portKey);
+        saveSearchHistory(resolved.query, 'port');
+        return;
+      }
+
+      if (resolved.type !== currentSearchMode) {
+        setSearchMode(resolved.type);
+      }
+
+      currentTargetId = resolved.query;
+      saveSearchHistory(resolved.query, resolved.type);
+
+      // PC 화면에서 새로 갱신된 정보를 즉각 확인할 수 있도록 우측 패널 최상단으로 스크롤
+      const panelContent = document.getElementById('panelContent');
+      if (panelContent) panelContent.scrollTop = 0;
 
       document.getElementById('welcomeCard').classList.add('hidden');
-      document.getElementById('resultCard').classList.remove('hidden');
+      const resultCard = document.getElementById('resultCard');
+      resultCard.classList.remove('hidden');
+      resultCard.classList.remove('panel-updated-flash');
+      void resultCard.offsetWidth;
+      resultCard.classList.add('panel-updated-flash');
+
       document.getElementById('panelLastUpdated').innerText = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' 갱신';
 
-      if (mode === 'cntr') {
-        renderContainerTracking(q);
+      if (resolved.type === 'cntr') {
+        renderContainerTracking(resolved.query);
       } else {
-        renderVesselTracking(q);
+        renderVesselTracking(resolved.query);
       }
 
       // 모바일 화면일 경우 결과 상세 패널로 자동 스크롤
@@ -1509,6 +1661,14 @@
 
     // 컨테이너 화물 트래킹 렌더링
     function renderContainerTracking(cntrNo) {
+      // 항만 섹션 숨김 및 컨테이너/선박 관제 섹션 활성화
+      document.getElementById('portSection').classList.add('hidden');
+      document.getElementById('progressSection').classList.remove('hidden');
+      document.getElementById('milestoneSection').classList.remove('hidden');
+      document.getElementById('vesselSpecCard').classList.remove('hidden');
+      const dtSec = document.getElementById('directTrackSection');
+      if (dtSec) dtSec.classList.remove('hidden');
+
       const prefix = cntrNo.substring(0, 4);
       const carrier = CARRIER_DB[prefix] || {
         name: prefix + ' (글로벌 선사)',
@@ -1605,6 +1765,14 @@
 
     // 선박 실시간 AIS 트래킹 렌더링
     function renderVesselTracking(vesselQuery) {
+      // 항만 섹션 숨김 및 컨테이너/선박 관제 섹션 활성화
+      document.getElementById('portSection').classList.add('hidden');
+      document.getElementById('progressSection').classList.remove('hidden');
+      document.getElementById('milestoneSection').classList.remove('hidden');
+      document.getElementById('vesselSpecCard').classList.remove('hidden');
+      const dtSec = document.getElementById('directTrackSection');
+      if (dtSec) dtSec.classList.remove('hidden');
+
       const cleanQ = vesselQuery.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 
       // 이름, IMO, MMSI 검색
@@ -1674,6 +1842,147 @@
 
       const route = MARITIME_ROUTES[vessel.routeId] || MARITIME_ROUTES.route_asia_europe;
       drawNauticalRoute(route, vessel);
+    }
+
+    // 특정 항만과 연계된 현재 정기선 및 기항 선박 추출
+    function getConnectingVesselsForPort(portCode, portKey) {
+      const port = WORLD_PORTS[portKey] || Object.values(WORLD_PORTS).find(p => p.code === portCode);
+      const pNameShort = port ? port.name.split(' ')[0] : '';
+      return VESSEL_DB.filter(v => {
+        const route = MARITIME_ROUTES[v.routeId];
+        if (!route) return false;
+        const matchOrigin = route.origin.code === portCode || (port && route.origin.code === port.code);
+        const matchDest = route.destination.code === portCode || (port && route.destination.code === port.code);
+        const matchWp = route.waypoints.some(wp => wp.code === portCode || (port && wp.code === port.code) || (pNameShort && wp.name && wp.name.includes(pNameShort)));
+        const matchAtdEta = (pNameShort && v.atd && v.atd.includes(pNameShort)) || (pNameShort && v.eta && v.eta.includes(pNameShort));
+        return matchOrigin || matchDest || matchWp || matchAtdEta;
+      });
+    }
+
+    // 글로벌 메가 항만 상세 관제 렌더링
+    function renderPortDetails(portKey) {
+      const port = WORLD_PORTS[portKey] || Object.values(WORLD_PORTS).find(p => p.code === portKey);
+      if (!port) return;
+
+      const pKey = Object.keys(WORLD_PORTS).find(k => WORLD_PORTS[k].code === port.code) || portKey;
+
+      currentTargetId = port.name;
+      currentSearchMode = 'port';
+
+      // 상단 입력창에 항만명 반영
+      const searchInput = document.getElementById('searchInput');
+      if (searchInput) {
+        searchInput.value = port.name;
+        document.getElementById('clearBtn').classList.remove('hidden');
+      }
+
+      // 우측 패널 최상단으로 스크롤 (PC에서 변경 사항 즉각 인지)
+      const panelContent = document.getElementById('panelContent');
+      if (panelContent) panelContent.scrollTop = 0;
+
+      // 카드 전환 및 갱신 애니메이션 플래시
+      document.getElementById('welcomeCard').classList.add('hidden');
+      const resultCard = document.getElementById('resultCard');
+      resultCard.classList.remove('hidden');
+      resultCard.classList.remove('panel-updated-flash');
+      void resultCard.offsetWidth;
+      resultCard.classList.add('panel-updated-flash');
+
+      // 갱신 시각 업데이트
+      document.getElementById('panelLastUpdated').innerText = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' 갱신';
+
+      // 상태 뱃지
+      document.getElementById('panelStatusBadge').className = "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200";
+      document.getElementById('panelStatusBadge').innerHTML = "<span>⚓</span> <span>항만 터미널 관제 (Port Hub)</span>";
+      document.getElementById('panelCarrierName').innerText = `${port.country} • ${port.code}`;
+
+      // 헤더 카드
+      document.getElementById('resTypeLabel').innerHTML = "<span>⚓</span> <span>글로벌 메가 컨테이너 항만 (Global Port)</span>";
+      document.getElementById('resTargetId').innerText = port.name;
+      document.getElementById('resValidationBadge').className = "bg-sky-500/20 text-sky-300 font-mono px-2 py-0.5 rounded text-[10px] border border-sky-400/30";
+      document.getElementById('resValidationBadge').innerText = "UN/LOCODE: " + port.code;
+      document.getElementById('resCarrierBadge').innerText = port.country;
+      document.getElementById('resSubInfo').innerText = `연간 물동량: ${port.teu} | 좌표: ${port.lat.toFixed(4)}°N, ${port.lon.toFixed(4)}°E`;
+
+      // 선박/화물 전용 섹션 숨기기 & 항만 섹션 활성화
+      document.getElementById('progressSection').classList.add('hidden');
+      document.getElementById('milestoneSection').classList.add('hidden');
+      document.getElementById('vesselSpecCard').classList.add('hidden');
+      const directTrack = document.getElementById('directTrackSection');
+      if (directTrack) directTrack.classList.add('hidden');
+      document.getElementById('portSection').classList.remove('hidden');
+
+      // 항만 데이터 바인딩
+      document.getElementById('portTeuBadge').innerText = port.teu;
+      document.getElementById('portCountry').innerText = port.country;
+      document.getElementById('portCoords').innerText = `${port.lat.toFixed(4)}°N, ${port.lon.toFixed(4)}°E`;
+      document.getElementById('portLocode').innerText = port.code;
+      document.getElementById('portRank').innerText = port.teu.includes('위') ? port.teu.split('(')[1]?.replace(')', '') || '주요 거점 항만' : '글로벌 무역항';
+      document.getElementById('portDescription').innerText = port.info || `${port.name}은(는) ${port.country}의 핵심 해운 물류 거점으로 연간 ${port.teu}의 컨테이너 화물을 처리하는 전략적 무역항입니다.`;
+
+      // 연계 선박 리스트
+      const connectingVessels = getConnectingVesselsForPort(port.code, pKey);
+      document.getElementById('portVesselCount').innerText = `${connectingVessels.length}척 운항 중`;
+
+      const vesselListContainer = document.getElementById('portVesselList');
+      if (connectingVessels.length === 0) {
+        vesselListContainer.innerHTML = '<div class="text-xs text-slate-400 p-3 text-center bg-slate-50 rounded-xl">현재 항로에 등록된 기항 선박이 없습니다.</div>';
+      } else {
+        vesselListContainer.innerHTML = connectingVessels.map(v => {
+          const route = MARITIME_ROUTES[v.routeId];
+          return `
+            <div class="p-2.5 rounded-xl bg-slate-50 hover:bg-sky-50/50 border border-slate-200/80 hover:border-sky-300 transition flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="font-extrabold text-slate-800 text-xs flex items-center gap-1.5 truncate">
+                  <span>🚢</span> <span>${v.name}</span>
+                  <span class="text-[10px] font-mono bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded font-bold">${v.capacityTeu.toLocaleString()} TEU</span>
+                </div>
+                <div class="text-[11px] text-slate-500 truncate mt-0.5">
+                  ${v.operator} | 항로: <b class="text-slate-700">${route ? route.name.split('(')[0] : v.serviceName}</b>
+                </div>
+                <div class="text-[10px] text-emerald-600 font-medium mt-0.5">
+                  현재 선위: ${v.currentPos.name} (${v.speedKts} kts)
+                </div>
+              </div>
+              <button type="button" onclick="quickSearch('${v.name}', 'vessel')" class="flex-shrink-0 px-2.5 py-1.5 bg-sky-600 hover:bg-sky-500 active:scale-95 text-white font-bold text-[11px] rounded-lg shadow-sm transition">
+                항적 보기 ↗
+              </button>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // 공식 포털 링크
+      const linksContainer = document.getElementById('portOfficialLinks');
+      const officialSite = port.site || `https://www.google.com/search?q=${encodeURIComponent(port.name + ' port authority')}`;
+      const officialName = port.siteName || `${port.name.split(' ')[0]} 공식 포털`;
+      linksContainer.innerHTML = `
+        <a href="${officialSite}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-between p-2.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200 font-bold text-xs transition">
+          <span class="flex items-center gap-1.5 truncate">
+            <span>🌐</span> <span class="truncate">${officialName}</span>
+          </span>
+          <span class="text-sky-600 text-[10px] flex-shrink-0 ml-1">새 창 ↗</span>
+        </a>
+        <a href="https://www.marinetraffic.com/en/ais/home/centerx:${port.lon}/centery:${port.lat}/zoom:11" target="_blank" rel="noopener noreferrer" class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200 font-bold text-xs transition">
+          <span class="flex items-center gap-1.5 truncate">
+            <span>📡</span> <span>항만 실시간 AIS 관제</span>
+          </span>
+          <span class="text-slate-400 text-[10px] flex-shrink-0 ml-1">새 창 ↗</span>
+        </a>
+      `;
+
+      // 맵 이동
+      if (map) {
+        map.flyTo([port.lat, port.lon], 9, { duration: 1.2 });
+      }
+
+      // 모바일 화면일 경우 자동 스크롤
+      if (window.innerWidth < 1024) {
+        setTimeout(() => {
+          const panel = document.getElementById('sidePanel');
+          if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 150);
+      }
     }
 
     // 선박 제원 상세 카드 렌더링
@@ -1863,6 +2172,13 @@
 
         const marker = L.marker([wp.lat, wp.lon], { icon }).addTo(map);
 
+        marker.on('click', () => {
+          if (wp.code) {
+            const pKey = Object.keys(WORLD_PORTS).find(k => WORLD_PORTS[k].code === wp.code || k === wp.code);
+            if (pKey) renderPortDetails(pKey);
+          }
+        });
+
         marker.bindPopup(`
           <div style="font-family: Pretendard, sans-serif; padding: 4px; min-width: 170px;">
             <div style="font-size: 13px; font-weight: 800; color: #0f172a; margin-bottom: 2px;">
@@ -1897,6 +2213,10 @@
       });
 
       currentVesselMarker = L.marker([normVesselLat, normVesselLon], { icon: vesselIcon }).addTo(map);
+
+      currentVesselMarker.on('click', () => {
+        renderVesselTracking(vessel.name);
+      });
 
       currentVesselMarker.bindPopup(`
         <div style="font-family: Pretendard, sans-serif; padding: 4px; min-width: 190px;">
@@ -2004,9 +2324,9 @@
       }
 
       container.innerHTML = list.map(item => {
-        const icon = item.mode === 'cntr' ? '📦' : '🚢';
+        const icon = item.mode === 'cntr' ? '📦' : item.mode === 'port' ? '⚓' : '🚢';
         return `
-          <button type="button" onclick="quickSearch('${item.query}', '${item.mode}')" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-700 font-mono font-bold transition">
+          <button type="button" onclick="executeSearch('${item.query}')" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-700 font-mono font-bold transition">
             <span>${icon}</span> <span>${item.query}</span>
           </button>
         `;
@@ -2014,25 +2334,23 @@
     }
 
     // ==========================================
-    // 11. URL 파라미터 파싱 (?q= / ?vessel= / ?cntr=)
+    // 11. URL 파라미터 파싱 (?q= / ?vessel= / ?cntr= / ?port=)
     // ==========================================
     function checkUrlQueryParams() {
       const params = new URLSearchParams(window.location.search);
       const q = params.get('q') || params.get('query');
       const vessel = params.get('vessel') || params.get('ship') || params.get('imo') || params.get('mmsi');
       const cntr = params.get('cntr') || params.get('container');
+      const port = params.get('port');
 
-      if (cntr) {
+      if (port) {
+        executeSearch(port);
+      } else if (cntr) {
         quickSearch(cntr, 'cntr');
       } else if (vessel) {
         quickSearch(vessel, 'vessel');
       } else if (q) {
-        const clean = q.trim().toUpperCase();
-        if (/^[A-Z]{4}\d{6,7}$/.test(clean)) {
-          quickSearch(clean, 'cntr');
-        } else {
-          quickSearch(clean, 'vessel');
-        }
+        executeSearch(q);
       }
     }
 
