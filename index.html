@@ -1747,7 +1747,39 @@
         currentVesselMarker = null;
       }
 
-      const wps = route.waypoints;
+      // 날짜변경선(180도) 횡단 항로 경도 연속성 보정 (태평양 횡단 Great-Circle 경로 등)
+      const rawWps = route.waypoints;
+      let offset = 0;
+      const wps = [];
+      for (let i = 0; i < rawWps.length; i++) {
+        const wp = rawWps[i];
+        let lon = wp.lon;
+        if (i > 0) {
+          const prevLon = wps[i - 1].lon;
+          const rawDiff = lon - (prevLon - offset);
+          if (rawDiff < -180) {
+            // 서경으로 날짜변경선 통과: +360 오프셋으로 태평양 횡단 연속성 유지
+            offset += 360;
+          } else if (rawDiff > 180) {
+            offset -= 360;
+          }
+        }
+        wps.push({
+          ...wp,
+          rawLon: wp.lon,
+          lon: lon + offset
+        });
+      }
+
+      // 선박 위치 경도 보정 (날짜변경선을 건넌 항로일 때 음수 경도 선박 위치 보정)
+      let normVesselLat = vessel.currentPos.lat;
+      let normVesselLon = vessel.currentPos.lon;
+      if (offset > 0 && normVesselLon < 0) {
+        normVesselLon += 360;
+      } else if (offset < 0 && normVesselLon > 0) {
+        normVesselLon -= 360;
+      }
+
       const latlngs = wps.map(w => [w.lat, w.lon]);
 
       // 항로 폴리라인 (해운 네이비 블루 점선)
@@ -1769,7 +1801,7 @@
       let closestIdx = 0;
       let minDis = 999999;
       wps.forEach((wp, idx) => {
-        const d = haversineNM(vessel.currentPos.lat, vessel.currentPos.lon, wp.lat, wp.lon);
+        const d = haversineNM(normVesselLat, normVesselLon, wp.lat, wp.lon);
         if (d < minDis) {
           minDis = d;
           closestIdx = idx;
@@ -1781,7 +1813,7 @@
         elapsedNM += haversineNM(wps[i].lat, wps[i].lon, wps[i + 1].lat, wps[i + 1].lon);
       }
       if (closestIdx < wps.length - 1) {
-        elapsedNM += Math.round(haversineNM(wps[closestIdx].lat, wps[closestIdx].lon, vessel.currentPos.lat, vessel.currentPos.lon));
+        elapsedNM += Math.round(haversineNM(wps[closestIdx].lat, wps[closestIdx].lon, normVesselLat, normVesselLon));
       }
 
       let remainingNM = Math.max(0, totalDistNM - elapsedNM);
@@ -1864,7 +1896,7 @@
         iconAnchor: [80, 20]
       });
 
-      currentVesselMarker = L.marker([vessel.currentPos.lat, vessel.currentPos.lon], { icon: vesselIcon }).addTo(map);
+      currentVesselMarker = L.marker([normVesselLat, normVesselLon], { icon: vesselIcon }).addTo(map);
 
       currentVesselMarker.bindPopup(`
         <div style="font-family: Pretendard, sans-serif; padding: 4px; min-width: 190px;">
